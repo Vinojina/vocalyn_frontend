@@ -11,10 +11,11 @@ import Intermediate from './pages/Intermediate.jsx';
 import Advance from './pages/Advance.jsx';
 import AdminDashboard from './pages/Admin.jsx'; 
 import UserDashboard from './pages/Userdashboard.jsx';
+import PracticePage from './pages/PracticePage.jsx';
+
 
 function App() {
   return (
-    <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/RegisterPage" element={<RegisterPage />} />
@@ -26,9 +27,11 @@ function App() {
         <Route path="/advance" element={<Advance />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/userdashboard" element={<UserDashboard />} />
+        <Route path="practice/:songId" element={<PracticePage/>}/>
+
+
         {/* Add more routes as needed */}
       </Routes>
-    </Router>
   );
 }
 

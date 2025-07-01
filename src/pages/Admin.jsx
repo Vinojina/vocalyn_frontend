@@ -6,8 +6,6 @@ const Admin = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [editUser, setEditUser] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [stats, setStats] = useState({
     totalUsers: 0,
     adminUsers: 0,
@@ -19,6 +17,8 @@ const Admin = () => {
   });
   const [audioFile, setAudioFile] = useState(null);
   const [lyricsFile, setLyricsFile] = useState(null);
+  const [songsLoading, setSongsLoading] = useState(false);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -55,8 +55,31 @@ const Admin = () => {
   };
 
   const fetchSongs = async () => {
-    const { data } = await axios.get('/api/songs/all-songs');
-    setSongs(data);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('/api/songs/all-songs', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      console.log('Songs fetched:', response.data);
+      setSongs(response.data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch songs:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        config: err.config
+      });
+      
+      if (err.response?.status === 401) {
+        // Handle unauthorized
+        navigate('/login');
+      } else {
+        setError(err.response?.data?.message || 'Failed to load songs');
+      }
+    }
   };
 
   const handleSongUpload = async (e) => {
@@ -124,13 +147,29 @@ const Admin = () => {
     navigate('/login');
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl font-semibold">Loading dashboard...</div>
+  // Helper to group songs by level
+  const groupSongsByLevel = (songs) => {
+    const levels = ['beginner', 'intermediate', 'advanced'];
+    return levels.map(level => ({
+      level,
+      songs: songs.filter(song => song.status === approved)
+    }));
+  };
+
+  // Song item component
+  const SongItem = ({ song, onDelete }) => (
+    <li key={song._id} className="bg-gray-50 p-3 rounded flex justify-between items-center">
+      <div>
+        <p className="font-semibold">{song.title} - {song.artist}</p>
+        <p className="text-sm">{song.level} | {song.status} | {song.genre}</p>
+        <audio controls src={`http://localhost:5000${song.audioUrl}`} className="mt-2 w-full" />
       </div>
-    );
-  }
+      <button
+        onClick={() => onDelete(song._id)}
+        className="text-red-600 hover:underline"
+      >Delete</button>
+    </li>
+  );
 
   return (
     <div className="min-h-screen flex">
@@ -193,21 +232,43 @@ const Admin = () => {
             <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Upload</button>
           </form>
 
-          <ul className="space-y-4">
-            {songs.map(song => (
-              <li key={song._id} className="bg-gray-50 p-3 rounded flex justify-between items-center">
-                <div>
-                  <p className="font-semibold">{song.title} - {song.artist}</p>
-                  <p className="text-sm">{song.level} | {song.status} | {song.genre}</p>
-                  <audio controls src={`http://localhost:5000${song.audioUrl}`} className="mt-2 w-full" />
-                </div>
-                <button
-                  onClick={() => handleSongDelete(song._id)}
-                  className="text-red-600 hover:underline"
-                >Delete</button>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-8">
+            {/* Beginner Songs */}
+            <div>
+              <h3 className="text-lg font-bold mb-3">Beginner Songs</h3>
+              {songs.filter(song => song.level === 'beginner').length === 0 ? (
+                <div className="text-gray-500">No beginner songs.</div>
+              ) : (
+                songs.filter(song => song.level === 'beginner').map(song => (
+                  <SongItem key={song._id} song={song} onDelete={handleSongDelete} />
+                ))
+              )}
+            </div>
+
+            {/* Intermediate Songs */}
+            <div>
+              <h3 className="text-lg font-bold mb-3">Intermediate Songs</h3>
+              {songs.filter(song => song.level === 'intermediate').length === 0 ? (
+                <div className="text-gray-500">No intermediate songs.</div>
+              ) : (
+                songs.filter(song => song.level === 'intermediate').map(song => (
+                  <SongItem key={song._id} song={song} onDelete={handleSongDelete} />
+                ))
+              )}
+            </div>
+
+            {/* Advanced Songs */}
+            <div>
+              <h3 className="text-lg font-bold mb-3">Advanced Songs</h3>
+              {songs.filter(song => song.level === 'advanced').length === 0 ? (
+                <div className="text-gray-500">No advanced songs.</div>
+              ) : (
+                songs.filter(song => song.level === 'advanced').map(song => (
+                  <SongItem key={song._id} song={song} onDelete={handleSongDelete} />
+                ))
+              )}
+            </div>
+          </div>
         </section>
       </main>
     </div>
