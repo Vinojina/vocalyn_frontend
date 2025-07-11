@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import BackIcon from "/src/assets/back.png";
 import PlayCircle from "/src/assets/play.png";
+import premium from "/src/assets/premium.png"; // Assuming you have a premium icon
 
-const Advanced= () => {
-  const [songs, setSongs] = useState([]);
+const Advanced = () => {
   const navigate = useNavigate();
+  const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isPremiumUser = localStorage.getItem("isPremium") === "true";
 
   useEffect(() => {
     const fetchSongs = async () => {
@@ -20,56 +22,106 @@ const Advanced= () => {
         setLoading(false);
       }
     };
-
     fetchSongs();
   }, []);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white bg-[#0c011a]">
+        Loading...
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center px-4 py-6 text-pink-600">
-      {/* Header */}
-      <div className="w-full max-w-3xl">
-        <div className="flex items-center mb-4">
-          <button onClick={() => navigate(-1)} className="mr-2">
-             <img src={BackIcon} alt="backicon" className="w-6 h-6 cursor-pointer text-black" />
-          </button>
-          <h1 className="text-2xl font-semibold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-            Advanced
-          </h1>
-        </div>
-        <p className="text-center p-5 text-pink-400 mb-6 text-sm">
-          Choose your skill level and start practicing
-        </p>
-      </div>
+    <div className="relative bg-gradient-to-br from-[#0c011a] to-[#1f0a3b] text-white flex flex-col min-h-screen overflow-hidden">
+      
+      {/* 🎨 Background Blobs */}
+      <div className="absolute w-[500px] h-[500px] bg-pink-400 opacity-30 rounded-full blur-[200px] top-[-150px] left-[-120px] z-0 animate-pulse" />
+      <div className="absolute w-[450px] h-[450px] bg-purple-600 opacity-25 rounded-full blur-[180px] bottom-[-100px] right-[-100px] z-0 animate-pulse delay-500" />
+      <div className="absolute w-[400px] h-[400px] bg-blue-500 opacity-20 rounded-full blur-[150px] top-[40%] left-[50%] z-0 transform -translate-x-1/2 -translate-y-1/2 animate-pulse delay-1000" />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
-        {songs.map((song, index) => (
-          <div
-            key={song._id || index}
-            className="border-b pb-4 flex flex-col space-y-1 text-left"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="font-semibold text-pink-600">{song.title}</h2>
-                <p className="text-sm text-pink-400">{song.artist || song.type}</p>
-                <p className="text-sm text-black">{song.duration}</p>
-              </div>
-              <p className="text-sm text-black capitalize">{song.level}</p>
-            </div>
-            <button  onClick={() => navigate(`/practice/${song._id}`)} className="flex items-center justify-center gap-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-full px-4 py-2 mt-2 hover:from-pink-600 hover:to-purple-600 transition">
-              <img src={PlayCircle} alt="play" className="w-5 h-5" />
-              Practice song
+      {/* Page Content Wrapper */}
+      <div className="relative z-10 flex-grow flex flex-col px-6 py-20">
+
+        {/* Header */}
+        <div className="w-full max-w-6xl mx-auto mb-10">
+          <div className="flex items-center">
+            <button
+              onClick={() => {
+                if (window.history.length > 1) {
+                  navigate(-1);
+                } else {
+                  navigate("/levels");
+                }
+              }}
+              className="mr-4"
+            >
+              <img src={BackIcon} alt="Back" className="w-6 h-6" />
             </button>
+            <div>
+              <h1 className="text-3xl font-bold text-white">Advanced</h1>
+              <p className="text-white/70 text-sm mt-1">
+                Choose your skill level and start practicing
+              </p>
+            </div>
           </div>
-        ))}
+        </div>
+
+        {/* Song Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl mx-auto">
+          {songs.map((song, index) => (
+            <div
+              key={song._id || index}
+              className="flex flex-col justify-between h-full bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-6 transition-shadow hover:shadow-xl"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="font-semibold text-white text-lg">{song.title}</h2>
+                  <p className="text-sm text-pink-100">{song.artist || song.type}</p>
+                  <p className="text-sm text-white/80">{song.duration}</p>
+                  {song.premium && (
+                    <span className="inline-block mt-1 text-xs text-yellow-400 font-medium">
+                      Premium
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm capitalize text-white/50">{song.level}</p>
+                <img src={premium} alt="Premium" className="w-6 h-6 ml-2" />
+              </div>
+
+              <button
+                onClick={() => {
+                  console.log('Navigating to payment with songId:', song._id, song);
+                  if (!song._id) {
+                    alert('Missing song id! Song object: ' + JSON.stringify(song));
+                    return;
+                  }
+                  if (song.premium && !isPremiumUser) {
+                    navigate(`/payment?songId=${song._id}`);
+                  } else {
+                    navigate(`/payment?songId=${song._id}`);
+                  }
+                }}
+                className={`flex items-center justify-center gap-2 rounded-full px-4 py-2 mt-6 transition
+                  ${
+                    song.premium && !isPremiumUser
+                      ? 'bg-gray-600 cursor-pointer'
+                      : 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600'
+                  }
+                `}
+              >
+                <img src={PlayCircle} alt="Play" className="w-5 h-5" />
+                {song.premium && !isPremiumUser ? 'Premium Locked' : 'Practice Song'}
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Footer */}
-      <footer className="mt-auto pt-6 text-xs text-black opacity-60">
-        © All rights reserved. <span className="font-semibold">Vocalyn</span>
+      <footer className="relative z-10 text-center text-xs text-white/50 py-6">
+        © All rights reserved. <span className="font-semibold text-white">Vocalyn</span>
       </footer>
     </div>
   );

@@ -1,282 +1,190 @@
-import { useState, useRef, useEffect } from 'react';
+// PracticePage.jsx
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const PracticePage = () => {
   const { songId } = useParams();
   const navigate = useNavigate();
+
   const [song, setSong] = useState(null);
-  const [error, setError] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [lyrics, setLyrics] = useState([]);
   const [currentLine, setCurrentLine] = useState(0);
-  const [audioReady, setAudioReady] = useState(false);
-  const [volume, setVolume] = useState(0.7);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.8);
+  const [error, setError] = useState(null);
+
   const audioRef = useRef(null);
   const lyricsRef = useRef(null);
-  const [audioFormats, setAudioFormats] = useState(['.mp3', '.ogg', '.wav']); // Supported formats
-  const [currentFormatIndex, setCurrentFormatIndex] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const [recordedChunks, setRecordedChunks] = useState([]);
 
-  // Check available audio formats
-  useEffect(() => {
-    const checkFormats = async () => {
-      if (!song?.audioUrl) return;
-      
-      const baseUrl = song.audioUrl.replace(/\.[^/.]+$/, '');
-      const availableFormats = [];
-      
-      for (const format of audioFormats) {
-        try {
-          const response = await fetch(`${baseUrl}${format}`, { method: 'HEAD' });
-          if (response.ok) {
-            availableFormats.push(format);
-          }
-        } catch (e) {
-          console.log(`Format ${format} not available`);
-        }
+  const parseLyrics = (rawLyrics) => {
+    const lines = rawLyrics.replace(/\r\n/g, '\n').split('\n');
+    return lines.map((line, i) => {
+      const match = line.match(/\[(\d{1,2}):(\d{2})(?:\.(\d{1,2}))?](.*)/);
+      if (match) {
+        const min = parseInt(match[1]);
+        const sec = parseInt(match[2]);
+        const ms = match[3] ? parseFloat(`0.${match[3]}`) : 0;
+        const time = min * 60 + sec + ms;
+        return { time, text: match[4].trim() };
       }
-      
-      if (availableFormats.length === 0) {
-        setError('No supported audio formats available');
-      }
-      setAudioFormats(availableFormats);
-    };
-    
-    checkFormats();
-  }, [song]);
+      return { time: i * 1, text: line }; // fallback
+    });
+  };
 
-  // Fetch song data
   useEffect(() => {
     const fetchSong = async () => {
       try {
-        const response = await axios.get(`/api/songs/${songId}`);
-        
-        if (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>')) {
-          throw new Error('Server returned HTML instead of JSON');
-        }
-        
-        setSong(response.data);
+        const res = await axios.get(`/api/songs/${songId}`);
+        setSong(res.data);
+        const parsed = parseLyrics(res.data.lyrics || '');
+        setLyrics(parsed);
       } catch (err) {
-        console.error('Error fetching song:', err);
-        setError(err.response?.data?.error || 'Failed to load song data');
+        console.error('Failed to fetch song:', err);
+        setError('Failed to load song data');
       }
     };
-    
+
     fetchSong();
-    
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-    };
   }, [songId]);
 
-  // Handle audio errors by trying next format
-  const handleAudioError = (e) => {
-    const error = e.target.error;
-    console.error('Audio error:', error);
-    
-    if (currentFormatIndex < audioFormats.length - 1) {
-      // Try next available format
-      setCurrentFormatIndex(currentFormatIndex + 1);
-      setError(`Trying ${audioFormats[currentFormatIndex + 1]} format...`);
-    } else {
-      setError('Failed to play audio: No supported formats available');
-    }
-  };
-
-  // Play/pause handler
-  const handlePlay = async () => {
-    try {
-      if (audioRef.current) {
-        if (isPlaying) {
-          audioRef.current.pause();
-          setIsPlaying(false);
-        } else {
-          await audioRef.current.play();
-          setIsPlaying(true);
-        }
-      }
-    } catch (err) {
-      console.error("Playback error:", err);
-      setError("Failed to play audio: " + err.message);
-      setIsPlaying(false);
-    }
-  };
-
-  // Lyrics synchronization
   const handleTimeUpdate = () => {
-    if (!song?.lyrics || !audioRef.current) return;
-
-    const currentTime = audioRef.current.currentTime;
-    const lines = song.lyrics.split('\n');
-
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const timeMatch = lines[i].match(/\[(\d+):(\d+)\.(\d+)\]/);
-      if (timeMatch) {
-        const minutes = parseInt(timeMatch[1]);
-        const seconds = parseInt(timeMatch[2]);
-        const milliseconds = parseInt(timeMatch[3]);
-        const lineTime = minutes * 60 + seconds + milliseconds / 1000;
-        
-        if (currentTime >= lineTime) {
-          setCurrentLine(i);
-          
-          // Auto-scroll to current line
-          if (lyricsRef.current) {
-            const lyricLines = lyricsRef.current.querySelectorAll('p');
-            if (lyricLines[i]) {
-              lyricLines[i].scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-              });
-            }
-          }
-          break;
-        }
+    const time = audioRef.current.currentTime;
+    const index = lyrics.findIndex((line, i) =>
+      time >= line.time && (i === lyrics.length - 1 || time < lyrics[i + 1].time)
+    );
+    if (index !== -1 && index !== currentLine) {
+      setCurrentLine(index);
+      const elements = lyricsRef.current?.querySelectorAll('p');
+      if (elements?.[index]) {
+        elements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
   };
 
-  // Loading state
-  if (!song && !error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500 mx-auto mb-4"></div>
-          <p className="text-gray-700">Loading song data...</p>
-        </div>
-      </div>
-    );
-  }
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks = [];
 
-  // Error state
-  if (error && (!audioFormats || currentFormatIndex >= audioFormats.length)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center p-6 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">Audio Error</h2>
-          <p className="text-gray-700 mb-4">{error}</p>
-          <div className="flex gap-2 justify-center">
-            <button
-              onClick={() => navigate(-1)}
-              className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition"
-            >
-              Back to Songs
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-pink-500 text-white px-4 py-2 rounded hover:bg-pink-600 transition"
-            >
-              Try Again
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
 
-  // Get current audio URL with selected format
-  const getAudioUrl = () => {
-    if (!song?.audioUrl) return '';
-    const baseUrl = song.audioUrl.replace(/\.[^/.]+$/, '');
-    return `${baseUrl}${audioFormats[currentFormatIndex]}`;
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('recording', blob, `${songId}-user-recording.webm`);
+        formData.append('songId', songId);
+
+        try {
+          await axios.post('/api/songs/recordings', formData);
+        } catch (err) {
+          console.error('Upload error', err);
+        }
+      };
+
+      mediaRecorder.start();
+    } catch (err) {
+      console.error('Mic access error', err);
+      setError('Microphone permission denied');
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+  };
+
+  const handlePlayPause = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      stopRecording();
+    } else {
+      audioRef.current.play().catch((e) => setError('Cannot play audio'));
+      startRecording();
+    }
+    setIsPlaying(!isPlaying);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-pink-50 to-purple-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center text-pink-600 hover:text-pink-800 transition"
-          >
-            ← Back to Songs
-          </button>
+    <div className="min-h-screen bg-[#fff8f8] p-6">
+      <div className="max-w-3xl mx-auto">
+        <div className="mb-4 flex justify-between items-center">
+          <button onClick={() => navigate(-1)} className="text-pink-600 hover:underline">← Back</button>
           <div className="text-right">
-            <h1 className="text-2xl md:text-3xl font-bold text-pink-600">
-              {song?.title || 'Untitled Song'}
-            </h1>
-            <h2 className="text-lg md:text-xl text-purple-600">
-              {song?.artist || 'Unknown Artist'}
-            </h2>
+            <h1 className="text-2xl font-bold text-pink-700">{song?.title}</h1>
+            <p className="text-purple-600">{song?.artist}</p>
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          {/* Lyrics Container */}
-          <div 
-            ref={lyricsRef}
-            className="h-96 md:h-[28rem] overflow-y-auto p-6 text-center text-lg leading-10"
-          >
-            {song?.lyrics?.split('\n').map((line, index) => (
-              <p 
-                key={index}
-                className={currentLine === index ? 
-                  "text-pink-600 font-bold scale-105" : 
-                  "text-gray-700 opacity-80"}
+        <div className="bg-white rounded shadow-lg overflow-hidden">
+          <div ref={lyricsRef} className="h-96 overflow-y-auto p-4 space-y-2 text-center text-lg leading-8">
+            {lyrics.map((line, i) => (
+              <p
+                key={i}
+                className={currentLine === i ? 'text-pink-600 font-bold text-xl' : 'text-gray-600'}
               >
-                {line.replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '')}
+                {line.text}
               </p>
             ))}
           </div>
 
-          {/* Controls */}
-          <div className="bg-gray-50 p-4 border-t border-gray-200">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={handlePlay}
-                  className={`flex items-center justify-center w-12 h-12 rounded-full ${
-                    isPlaying ? 'bg-pink-600' : 'bg-pink-500'
-                  } text-white shadow-md`}
-                >
-                  {isPlaying ? '❚❚' : '▶'}
-                </button>
-                
-                <div className="flex items-center space-x-2">
-                  <span>Volume:</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={volume}
-                    onChange={(e) => setVolume(parseFloat(e.target.value))}
-                    className="w-24"
-                  />
-                </div>
-              </div>
-
-              <div className="text-sm text-gray-600">
-                {error && currentFormatIndex < audioFormats.length && (
-                  <span className="text-yellow-600 mr-2">
-                    Trying {audioFormats[currentFormatIndex]}...
-                  </span>
-                )}
-                <span>Format: {audioFormats[currentFormatIndex]}</span>
+          <div className="p-4 border-t bg-gray-50 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handlePlayPause}
+                className={`w-12 h-12 rounded-full text-white text-lg ${isPlaying ? 'bg-pink-600' : 'bg-pink-500'} shadow`}
+              >
+                {isPlaying ? '❚❚' : '▶'}
+              </button>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm">Volume:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => {
+                    const vol = parseFloat(e.target.value);
+                    setVolume(vol);
+                    if (audioRef.current) audioRef.current.volume = vol;
+                  }}
+                  className="w-24"
+                />
               </div>
             </div>
+            <div className="text-sm text-gray-500">Karaoke Mode with Recording</div>
           </div>
         </div>
       </div>
 
-      {/* Audio Element */}
-      <audio
-        ref={audioRef}
-        src={getAudioUrl()}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={() => setIsPlaying(false)}
-        onError={handleAudioError}
-        onCanPlay={() => {
-          setAudioReady(true);
-          setError(null);
-        }}
-        preload="auto"
-        hidden
-      />
+      {song?.audioUrl && (
+        <audio
+          ref={audioRef}
+          src={`http://localhost:5000${song.audioUrl}`}
+          onTimeUpdate={handleTimeUpdate}
+          onEnded={() => {
+            setIsPlaying(false);
+            stopRecording();
+          }}
+          preload="auto"
+          onCanPlay={() => setError(null)}
+          onError={() => setError('Audio cannot be played')}
+          hidden
+        />
+      )}
+
+      {error && (
+        <div className="mt-4 text-center text-red-600">
+          {error}
+        </div>
+      )}
     </div>
   );
 };

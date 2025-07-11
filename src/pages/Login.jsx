@@ -70,24 +70,12 @@ const Login = () => {
       localStorage.setItem('user',JSON.stringify(userData))
       const decoded = jwtDecode(token);
       
-      // Update auth context
-      // if (login) {
-      //   login({
-      //     email: decoded.email,
-      //     role: decoded.role,
-      //     name: decoded.name,
-      //     token
-      //   });
-      // }
-
-     
-
       // Redirect based on role
       setSuccess('Login successful! Redirecting...');
       if (userData.isAdmin) {
         navigate('/admin');
       } else {
-        navigate('/userdashboard');
+        navigate('/');
       }
       
     } catch (error) {
