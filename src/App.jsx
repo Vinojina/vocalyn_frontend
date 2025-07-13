@@ -14,6 +14,7 @@ import PracticePage from './pages/PracticePage.jsx';
 import PitchDetector from './pages/itchDetector.jsx';
 import PaymentPage from './pages/PaymentPage.jsx';
 import PaymentSuccess from './pages/PaymentSuccess.jsx';
+import SingingRecorder from './pages/SingingRecorder.jsx';
 
 
 import axios from "axios";
@@ -40,6 +41,7 @@ function App() {
       <Route path="/pitch" element={<PitchDetector />} />
       <Route path="/payment" element={<PaymentPage />} />
       <Route path="/payment-success" element={<PaymentSuccess />} />
+      <Route path="/singing-recorder" element={<SingingRecorder />} />
 
         {/* Add more routes as needed */}
       </Routes>

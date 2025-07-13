@@ -1,7 +1,8 @@
-// PracticePage.jsx
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const PracticePage = () => {
   const { songId } = useParams();
@@ -13,11 +14,12 @@ const PracticePage = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.8);
   const [error, setError] = useState(null);
+  const [feedback, setFeedback] = useState('');
+  const [score, setScore] = useState(null);
 
   const audioRef = useRef(null);
   const lyricsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const [recordedChunks, setRecordedChunks] = useState([]);
 
   const parseLyrics = (rawLyrics) => {
     const lines = rawLyrics.replace(/\r\n/g, '\n').split('\n');
@@ -30,7 +32,7 @@ const PracticePage = () => {
         const time = min * 60 + sec + ms;
         return { time, text: match[4].trim() };
       }
-      return { time: i * 1, text: line }; // fallback
+      return { time: i * 1, text: line };
     });
   };
 
@@ -38,9 +40,19 @@ const PracticePage = () => {
     const fetchSong = async () => {
       try {
         const res = await axios.get(`/api/songs/${songId}`);
-        setSong(res.data);
-        const parsed = parseLyrics(res.data.lyrics || '');
+        const songData = res.data;
+        setSong(songData);
+        const parsed = parseLyrics(songData.lyrics || '');
         setLyrics(parsed);
+
+        if (songData.status === 'premium') {
+          const isPremium = localStorage.getItem('isPremium') === 'true';
+          const unlocked = JSON.parse(localStorage.getItem('unlockedSongs') || '[]');
+          const isUnlocked = unlocked.includes(songId);
+          if (!isPremium && !isUnlocked) {
+            navigate(`/payment?songId=${songId}`);
+          }
+        }
       } catch (err) {
         console.error('Failed to fetch song:', err);
         setError('Failed to load song data');
@@ -48,7 +60,7 @@ const PracticePage = () => {
     };
 
     fetchSong();
-  }, [songId]);
+  }, [songId, navigate]);
 
   const handleTimeUpdate = () => {
     const time = audioRef.current.currentTime;
@@ -82,9 +94,27 @@ const PracticePage = () => {
         formData.append('songId', songId);
 
         try {
-          await axios.post('/api/songs/recordings', formData);
+          const res = await axios.post('/api/songs/recordings', formData);
+          console.log("🎤 Gemini response:", res.data);
+
+          const { feedback, score } = res.data;
+
+          if (feedback && typeof score === "number") {
+            setFeedback(feedback);
+            setScore(score);
+            toast.success("✅ Singing feedback received!");
+          } else {
+            console.warn("⚠️ Invalid feedback response:", res.data);
+            setFeedback("⚠️ No valid feedback received from server.");
+            setScore("N/A");
+            toast.error("⚠️ Could not retrieve valid feedback.");
+          }
+
         } catch (err) {
-          console.error('Upload error', err);
+          console.error('❌ Upload error:', err);
+          setFeedback("❌ Error retrieving feedback.");
+          setScore("N/A");
+          toast.error('❌ Failed to get feedback from server');
         }
       };
 
@@ -162,6 +192,16 @@ const PracticePage = () => {
             <div className="text-sm text-gray-500">Karaoke Mode with Recording</div>
           </div>
         </div>
+
+        {feedback && (
+          <div className="mt-6 bg-green-50 border-l-4 border-green-400 p-4 rounded">
+            <h2 className="text-xl font-semibold text-green-700">🎤 Singing Feedback</h2>
+            <p className="mt-2 text-gray-800"><strong>Feedback:</strong> {feedback}</p>
+            <p className="text-gray-800">
+              <strong>Score:</strong> {typeof score === 'number' ? `${score} / 100` : score}
+            </p>
+          </div>
+        )}
       </div>
 
       {song?.audioUrl && (
@@ -181,10 +221,10 @@ const PracticePage = () => {
       )}
 
       {error && (
-        <div className="mt-4 text-center text-red-600">
-          {error}
-        </div>
+        <div className="mt-4 text-center text-red-600">{error}</div>
       )}
+
+      <ToastContainer position="bottom-right" />
     </div>
   );
 };
