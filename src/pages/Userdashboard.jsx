@@ -17,21 +17,22 @@ const UserDashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        setLoading(true);
-        const res = await axios.get("/api/users/dashboard");
-        setUser(res.data);
-        setSongs(res.data.songs || []);
-      } catch (err) {
-        console.error("❌ Dashboard error:", err);
-        setError("Failed to load dashboard.");
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchDashboard();
   }, []);
+
+  const fetchDashboard = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get("/api/users/dashboard");
+      setUser(res.data);
+      setSongs(res.data.songs || []);
+    } catch (err) {
+      console.error("❌ Dashboard error:", err);
+      setError("Failed to load dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDelete = async (songId) => {
     if (!window.confirm("Are you sure you want to delete this song?")) return;
@@ -75,17 +76,6 @@ const UserDashboard = () => {
           >
             ← Back
           </button>
-
-          {/* <button
-            onClick={() => {
-              localStorage.removeItem("auth_token");
-              localStorage.removeItem("isPremium");
-              window.location.href = "/";
-            }}
-            className="px-6 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full shadow-lg hover:brightness-110 transition font-semibold"
-          >
-            Logout
-          </button> */}
 
           <button
   onClick={() => {
@@ -163,17 +153,7 @@ const UserDashboard = () => {
         {/* 🌀 Fade-in Animation */}
         <style>{`
           .animate-fade-in {
-            animation: fadeIn 1.2s<button
-  onClick={() => {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("isPremium");
-    navigate("/login"); // Redirect to login page
-  }}
-  className="px-6 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full shadow-lg hover:brightness-110 transition font-semibold"
->
-  Logout
-</button>
- ease;
+            animation: fadeIn 1.2s ease;
           }
           @keyframes fadeIn {
             from { opacity: 0; transform: translateY(30px); }

@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { getWavRecorder } from '../recorderSetup';
+import { sendRecordingForFeedback } from '../api';
 
 const PracticePage = () => {
   const { songId } = useParams();
@@ -16,10 +18,13 @@ const PracticePage = () => {
   const [error, setError] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [score, setScore] = useState(null);
+  const [recordingBlob, setRecordingBlob] = useState(null);
+  const [saveLoading, setSaveLoading] = useState(false);
 
   const audioRef = useRef(null);
   const lyricsRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
 
   const parseLyrics = (rawLyrics) => {
     const lines = rawLyrics.replace(/\r\n/g, '\n').split('\n');
@@ -76,57 +81,61 @@ const PracticePage = () => {
     }
   };
 
+  const convertBlobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      const chunks = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
-      };
-
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('recording', blob, `${songId}-user-recording.webm`);
-        formData.append('songId', songId);
-
-        try {
-          const res = await axios.post('/api/songs/recordings', formData);
-          console.log("🎤 Gemini response:", res.data);
-
-          const { feedback, score } = res.data;
-
-          if (feedback && typeof score === "number") {
-            setFeedback(feedback);
-            setScore(score);
-            toast.success("✅ Singing feedback received!");
-          } else {
-            console.warn("⚠️ Invalid feedback response:", res.data);
-            setFeedback("⚠️ No valid feedback received from server.");
-            setScore("N/A");
-            toast.error("⚠️ Could not retrieve valid feedback.");
-          }
-
-        } catch (err) {
-          console.error('❌ Upload error:', err);
-          setFeedback("❌ Error retrieving feedback.");
-          setScore("N/A");
-          toast.error('❌ Failed to get feedback from server');
-        }
-      };
-
-      mediaRecorder.start();
+      const { recorder, stream } = await getWavRecorder();
+      recorderRef.current = recorder;
+      streamRef.current = stream;
+      recorder.startRecording();
     } catch (err) {
       console.error('Mic access error', err);
       setError('Microphone permission denied');
     }
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
+  const stopRecording = async () => {
+    if (recorderRef.current) {
+      await recorderRef.current.stopRecording(async () => {
+        const blob = recorderRef.current.getBlob();
+        setRecordingBlob(blob); // Save blob for later
+        const base64Audio = await convertBlobToBase64(blob);
+        try {
+          const res = await axios.post('/api/feedback', {
+            audioBase64: base64Audio,
+            originalLyrics: song?.lyrics || '',
+            transcribedLyrics: lyrics.map(l => l.text).join(' '),
+            pitchScore: 80,
+            tempoScore: 85
+          });
+          console.log('🎤 ChatGPT Response:', res.data);
+          const { feedback, score, analysis } = res.data;
+          if (feedback && typeof score === 'number') {
+            setFeedback(`${feedback}\n\nStrengths: ${analysis?.strengths}\nImprovements: ${analysis?.improvements}`);
+            setScore(score);
+            toast.success("✅ Singing feedback received!");
+          } else {
+            throw new Error('Invalid response');
+          }
+        } catch (err) {
+          console.error('❌ Upload error:', err);
+          setFeedback("❌ Error retrieving feedback.");
+          setScore("N/A");
+          toast.error('❌ Failed to get feedback from server');
+        }
+      });
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    }
   };
 
   const handlePlayPause = () => {
@@ -196,10 +205,35 @@ const PracticePage = () => {
         {feedback && (
           <div className="mt-6 bg-green-50 border-l-4 border-green-400 p-4 rounded">
             <h2 className="text-xl font-semibold text-green-700">🎤 Singing Feedback</h2>
-            <p className="mt-2 text-gray-800"><strong>Feedback:</strong> {feedback}</p>
-            <p className="text-gray-800">
-              <strong>Score:</strong> {typeof score === 'number' ? `${score} / 100` : score}
-            </p>
+            <pre className="mt-2 text-gray-800 whitespace-pre-wrap">{feedback}</pre>
+            <p className="text-gray-800 font-semibold">Score: {typeof score === 'number' ? `${score} / 100` : score}</p>
+            {recordingBlob && (
+              <button
+                className="mt-4 px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full shadow hover:brightness-110 transition font-semibold"
+                disabled={saveLoading}
+                onClick={async () => {
+                  setSaveLoading(true);
+                  const formData = new FormData();
+                  formData.append('recording', recordingBlob, `${songId}-user-recording.wav`);
+                  formData.append('title', song?.title || 'User Recording');
+                  formData.append('artist', song?.artist || user?.name || 'Unknown');
+                  formData.append('lyrics', song?.lyrics || '');
+                  formData.append('genre', song?.genre || '');
+                  formData.append('level', song?.level || 'beginner');
+                  try {
+                    await sendRecordingForFeedback(formData);
+                    toast.success('Recording saved to dashboard!');
+                    navigate('/dashboard');
+                  } catch (err) {
+                    toast.error('Failed to save recording.');
+                  } finally {
+                    setSaveLoading(false);
+                  }
+                }}
+              >
+                {saveLoading ? 'Saving...' : 'Save to Dashboard'}
+              </button>
+            )}
           </div>
         )}
       </div>
