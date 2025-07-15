@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import anxios from 'axios';
-import Login from './pages/Login'; // Import the Login component
+import Login from './pages/Login'; 
 import RegisterPage from './pages/Register';
 import Home from './pages/Home.jsx';
 import Training from './pages/Training.jsx';
@@ -11,7 +11,6 @@ import Advance from './pages/Advance.jsx';
 import AdminDashboard from './pages/Admin.jsx'; 
 import UserDashboard from './pages/Userdashboard.jsx';
 import PracticePage from './pages/PracticePage.jsx';
-import PitchDetector from './pages/itchDetector.jsx';
 import PaymentPage from './pages/PaymentPage.jsx';
 import PaymentSuccess from './pages/PaymentSuccess.jsx';
 import SingingRecorder from './pages/SingingRecorder.jsx';
@@ -38,7 +37,6 @@ function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/userdashboard" element={<UserDashboard />} />
         <Route path="/practice/:songId" element={<PracticePage/>}/>
-      <Route path="/pitch" element={<PitchDetector />} />
       <Route path="/payment" element={<PaymentPage />} />
       <Route path="/payment-success" element={<PaymentSuccess />} />
       <Route path="/singing-recorder" element={<SingingRecorder />} />

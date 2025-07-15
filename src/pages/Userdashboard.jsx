@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
@@ -14,6 +14,8 @@ const UserDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const [playingId, setPlayingId] = useState(null);
+  const audioRefs = useRef({}); // store refs for each audio element
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -40,10 +42,33 @@ const UserDashboard = () => {
     try {
       await axios.delete(`/api/users/songs/${songId}`);
       setSongs((prev) => prev.filter((song) => song._id !== songId));
+      if (playingId === songId) setPlayingId(null);
     } catch (err) {
       alert("Failed to delete song.");
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handlePlayPause = (songId) => {
+    const currentAudio = audioRefs.current[songId];
+    if (!currentAudio) return;
+
+    if (playingId === songId) {
+      // If this song is playing, pause it
+      currentAudio.pause();
+      setPlayingId(null);
+    } else {
+      // Pause any other playing audio
+      if (playingId && audioRefs.current[playingId]) {
+        audioRefs.current[playingId].pause();
+      }
+      // Play this audio
+      currentAudio.play();
+      setPlayingId(songId);
+      currentAudio.onended = () => {
+        setPlayingId(null);
+      };
     }
   };
 
@@ -78,16 +103,15 @@ const UserDashboard = () => {
           </button>
 
           <button
-  onClick={() => {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("isPremium");
-    navigate("/login"); // Redirect to login page
-  }}
-  className="px-6 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full shadow-lg hover:brightness-110 transition font-semibold"
->
-  Logout
-</button>
-
+            onClick={() => {
+              localStorage.removeItem("auth_token");
+              localStorage.removeItem("isPremium");
+              navigate("/login"); // Redirect to login page
+            }}
+            className="px-6 py-2 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full shadow-lg hover:brightness-110 transition font-semibold"
+          >
+            Logout
+          </button>
         </div>
 
         {/* 🧑‍🎤 Profile Card */}
@@ -122,6 +146,7 @@ const UserDashboard = () => {
                     <thead>
                       <tr>
                         <th className="px-4 py-2 text-pink-200 text-base">Title</th>
+                        <th className="px-4 py-2 text-pink-200 text-base">Play</th>
                         <th className="px-4 py-2 text-pink-200 text-base">Actions</th>
                       </tr>
                     </thead>
@@ -130,6 +155,25 @@ const UserDashboard = () => {
                         <tr key={song._id} className="bg-white/20 backdrop-blur rounded-xl shadow border border-white/20">
                           <td className="px-4 py-3 font-medium text-white rounded-l-xl">
                             {song.title || `Untitled Song #${idx + 1}`}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {song.audioUrl ? (
+                              <>
+                                <button
+                                  onClick={() => handlePlayPause(song._id)}
+                                  className="px-3 py-1 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full shadow hover:brightness-110 transition text-white font-semibold"
+                                >
+                                  {playingId === song._id ? "Pause" : "Play"}
+                                </button>
+                                <audio
+                                  ref={(el) => (audioRefs.current[song._id] = el)}
+                                  src={`http://localhost:5000${song.audioUrl}`}
+                                  preload="none"
+                                />
+                              </>
+                            ) : (
+                              <span className="text-white/60 text-xs italic">No audio</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 rounded-r-xl">
                             <button

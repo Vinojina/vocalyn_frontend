@@ -20,6 +20,7 @@ const PracticePage = () => {
   const [score, setScore] = useState(null);
   const [recordingBlob, setRecordingBlob] = useState(null);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [showAnalyzeButton, setShowAnalyzeButton] = useState(false);
 
   const audioRef = useRef(null);
   const lyricsRef = useRef(null);
@@ -104,38 +105,62 @@ const PracticePage = () => {
 
   const stopRecording = async () => {
     if (recorderRef.current) {
-      await recorderRef.current.stopRecording(async () => {
+      await recorderRef.current.stopRecording(() => {
         const blob = recorderRef.current.getBlob();
-        setRecordingBlob(blob); // Save blob for later
-        const base64Audio = await convertBlobToBase64(blob);
-        try {
-          const res = await axios.post('/api/feedback', {
-            audioBase64: base64Audio,
-            originalLyrics: song?.lyrics || '',
-            transcribedLyrics: lyrics.map(l => l.text).join(' '),
-            pitchScore: 80,
-            tempoScore: 85
-          });
-          console.log('🎤 ChatGPT Response:', res.data);
-          const { feedback, score, analysis } = res.data;
-          if (feedback && typeof score === 'number') {
-            setFeedback(`${feedback}\n\nStrengths: ${analysis?.strengths}\nImprovements: ${analysis?.improvements}`);
-            setScore(score);
-            toast.success("✅ Singing feedback received!");
-          } else {
-            throw new Error('Invalid response');
-          }
-        } catch (err) {
-          console.error('❌ Upload error:', err);
-          setFeedback("❌ Error retrieving feedback.");
-          setScore("N/A");
-          toast.error('❌ Failed to get feedback from server');
-        }
+        setRecordingBlob(blob);
+        setShowAnalyzeButton(true);
       });
+
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     }
+  };
+
+  const handleAnalyzeFeedback = async () => {
+    setFeedback('');
+    setScore(null);
+
+    if (!recordingBlob || recordingBlob.size < 2000) {
+      setError('🎤 Recording too short or empty. Please sing clearly.');
+      setShowAnalyzeButton(false);
+      return;
+    }
+
+    const audioCheck = new Audio(URL.createObjectURL(recordingBlob));
+    audioCheck.onloadedmetadata = async () => {
+      if (audioCheck.duration < 1) {
+        setError('🛑 Recording is too short or silent. Please try again.');
+        setShowAnalyzeButton(false);
+        return;
+      }
+
+      const base64Audio = await convertBlobToBase64(recordingBlob);
+
+      try {
+        const res = await axios.post('/api/feedback', {
+          audioBase64: base64Audio,
+          originalLyrics: song?.lyrics || '',
+          transcribedLyrics: lyrics.map(l => l.text).join(' '),
+          pitchScore: 80,
+          tempoScore: 85
+        });
+
+        const { feedback, score, analysis } = res.data;
+        if (feedback && typeof score === 'number') {
+          setFeedback(`${feedback}\n\nStrengths: ${analysis?.strengths}\nImprovements: ${analysis?.improvements}`);
+          setScore(score);
+          toast.success("✅ Singing feedback received!");
+        } else {
+          throw new Error('Invalid response');
+        }
+      } catch (err) {
+        console.error('❌ Upload error:', err);
+        setFeedback("❌ Error retrieving feedback.");
+        setScore("N/A");
+        toast.error('❌ Failed to get feedback from server');
+      }
+    };
   };
 
   const handlePlayPause = () => {
@@ -202,6 +227,15 @@ const PracticePage = () => {
           </div>
         </div>
 
+        {showAnalyzeButton && (
+          <button
+            onClick={handleAnalyzeFeedback}
+            className="mt-6 px-6 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full shadow hover:brightness-110 transition font-semibold"
+          >
+            Get Feedback
+          </button>
+        )}
+
         {feedback && (
           <div className="mt-6 bg-green-50 border-l-4 border-green-400 p-4 rounded">
             <h2 className="text-xl font-semibold text-green-700">🎤 Singing Feedback</h2>
@@ -216,7 +250,7 @@ const PracticePage = () => {
                   const formData = new FormData();
                   formData.append('recording', recordingBlob, `${songId}-user-recording.wav`);
                   formData.append('title', song?.title || 'User Recording');
-                  formData.append('artist', song?.artist || user?.name || 'Unknown');
+                  formData.append('artist', song?.artist || 'Unknown');
                   formData.append('lyrics', song?.lyrics || '');
                   formData.append('genre', song?.genre || '');
                   formData.append('level', song?.level || 'beginner');
