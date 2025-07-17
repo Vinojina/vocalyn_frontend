@@ -1,4 +1,3 @@
-// PaymentPage.jsx
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FaMusic, FaCreditCard } from 'react-icons/fa';
@@ -53,7 +52,7 @@ const PaymentPage = () => {
       const data = await res.json();
 
       if (data.url) {
-        window.location.href = data.url; // Redirect to Stripe Checkout
+        window.location.href = data.url;
       } else {
         alert('Failed to create Stripe checkout session.');
       }

@@ -26,6 +26,7 @@ const PracticePage = () => {
   const lyricsRef = useRef(null);
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
+  const waveformRef = useRef(null);
 
   const parseLyrics = (rawLyrics) => {
     const lines = rawLyrics.replace(/\r\n/g, '\n').split('\n');
@@ -117,6 +118,19 @@ const PracticePage = () => {
     }
   };
 
+  const checkAverageVolume = async (blob) => {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const channelData = audioBuffer.getChannelData(0);
+    let sum = 0;
+    for (let i = 0; i < channelData.length; i++) {
+      sum += Math.abs(channelData[i]);
+    }
+    const avg = sum / channelData.length;
+    return avg;
+  };
+
   const handleAnalyzeFeedback = async () => {
     setFeedback('');
     setScore(null);
@@ -127,16 +141,23 @@ const PracticePage = () => {
       return;
     }
 
-    const audioCheck = new Audio(URL.createObjectURL(recordingBlob));
-    audioCheck.onloadedmetadata = async () => {
-      if (audioCheck.duration < 1) {
+    const audioURL = URL.createObjectURL(recordingBlob);
+    const audio = new Audio(audioURL);
+    audio.onloadedmetadata = async () => {
+      if (audio.duration < 2) {
         setError('🛑 Recording is too short or silent. Please try again.');
         setShowAnalyzeButton(false);
         return;
       }
-
+      // Check average volume
+      const avgVolume = await checkAverageVolume(recordingBlob);
+      if (avgVolume < 0.01) { // Threshold for silence/very low volume
+        setError('🛑 No singing detected. Please sing clearly into the microphone.');
+        setShowAnalyzeButton(false);
+        return;
+      }
+      // Convert to base64 and send to backend
       const base64Audio = await convertBlobToBase64(recordingBlob);
-
       try {
         const res = await axios.post('/api/feedback', {
           audioBase64: base64Audio,
@@ -145,7 +166,6 @@ const PracticePage = () => {
           pitchScore: 80,
           tempoScore: 85
         });
-
         const { feedback, score, analysis } = res.data;
         if (feedback && typeof score === 'number') {
           setFeedback(`${feedback}\n\nStrengths: ${analysis?.strengths}\nImprovements: ${analysis?.improvements}`);
@@ -174,6 +194,32 @@ const PracticePage = () => {
     }
     setIsPlaying(!isPlaying);
   };
+
+  useEffect(() => {
+    if (!recordingBlob || !waveformRef.current) return;
+    const drawWaveform = async () => {
+      const arrayBuffer = await recordingBlob.arrayBuffer();
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const data = audioBuffer.getChannelData(0);
+      const canvas = waveformRef.current;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const step = Math.ceil(data.length / canvas.width);
+      const amp = canvas.height / 2;
+      for (let i = 0; i < canvas.width; i++) {
+        const min = 1.0;
+        const max = -1.0;
+        let val = data[i * step] || 0;
+        ctx.lineTo(i, amp + val * amp);
+      }
+      ctx.stroke();
+    };
+    drawWaveform();
+  }, [recordingBlob]);
 
   return (
     <div className="min-h-screen bg-[#fff8f8] p-6">
@@ -235,7 +281,6 @@ const PracticePage = () => {
             Get Feedback
           </button>
         )}
-
         {feedback && (
           <div className="mt-6 bg-green-50 border-l-4 border-green-400 p-4 rounded">
             <h2 className="text-xl font-semibold text-green-700">🎤 Singing Feedback</h2>
@@ -257,7 +302,7 @@ const PracticePage = () => {
                   try {
                     await sendRecordingForFeedback(formData);
                     toast.success('Recording saved to dashboard!');
-                    navigate('/dashboard');
+                    navigate('/userdashboard');
                   } catch (err) {
                     toast.error('Failed to save recording.');
                   } finally {
@@ -268,6 +313,18 @@ const PracticePage = () => {
                 {saveLoading ? 'Saving...' : 'Save to Dashboard'}
               </button>
             )}
+          </div>
+        )}
+
+        {recordingBlob && (
+          <div className="mt-4">
+            <canvas
+              ref={waveformRef}
+              width={400}
+              height={80}
+              style={{ width: '100%', maxWidth: 400, background: '#f3e8ff', borderRadius: 8 }}
+            />
+            <div className="text-xs text-gray-500 text-center mt-1">Waveform of your recording</div>
           </div>
         )}
       </div>
